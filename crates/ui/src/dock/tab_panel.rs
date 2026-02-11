@@ -4,7 +4,7 @@ use gpui::{
     App, AppContext, Context, Corner, DismissEvent, Div, DragMoveEvent, Empty, Entity,
     EventEmitter, FocusHandle, Focusable, InteractiveElement as _, IntoElement, ParentElement,
     Pixels, Render, ScrollHandle, SharedString, StatefulInteractiveElement, StyleRefinement,
-    Styled, WeakEntity, Window, div, prelude::FluentBuilder, px, relative, rems,
+    Styled, WeakEntity, Window, div, point, prelude::FluentBuilder, px, relative, rems,
 };
 use rust_i18n::t;
 
@@ -695,23 +695,39 @@ impl TabPanel {
 
         TabBar::new("tab-bar")
             .track_scroll(&self.tab_bar_scroll_handle)
-            .when(has_extend_dock_button, |this| {
-                this.prefix(
-                    h_flex()
-                        .items_center()
-                        .top_0()
-                        // Right -1 for avoid border overlap with the first tab
-                        .right(-px(1.))
-                        .border_r_1()
-                        .border_b_1()
-                        .h_full()
-                        .border_color(cx.theme().border)
-                        .bg(cx.theme().tab_bar)
-                        .px_2()
-                        .children(left_dock_button)
-                        .children(bottom_dock_button),
-                )
-            })
+            .prefix(
+                h_flex()
+                    .items_center()
+                    .top_0()
+                    // Right -1 for avoid border overlap with the first tab
+                    .right(-px(1.))
+                    .border_r_1()
+                    .border_b_1()
+                    .h_full()
+                    .border_color(cx.theme().border)
+                    .bg(cx.theme().tab_bar)
+                    .px_1()
+                    .gap_1()
+                    .child(
+                        Button::new("tab-scroll-left")
+                            .icon(IconName::ChevronLeft)
+                            .xsmall()
+                            .ghost()
+                            .tab_stop(false)
+                            .on_click(cx.listener(Self::on_tab_scroll_left)),
+                    )
+                    .child(
+                        Button::new("tab-scroll-right")
+                            .icon(IconName::ChevronRight)
+                            .xsmall()
+                            .ghost()
+                            .tab_stop(false)
+                            .on_click(cx.listener(Self::on_tab_scroll_right)),
+                    )
+                    // Keep existing dock buttons (if any) to the right of the scroll controls.
+                    .children(left_dock_button)
+                    .children(bottom_dock_button),
+            )
             .children(self.panels.iter().enumerate().filter_map(|(ix, panel)| {
                 let mut active = state.active_panel.as_ref() == Some(panel);
                 let droppable = self.collapsed;
@@ -728,7 +744,8 @@ impl TabPanel {
                 Some(
                     Tab::new()
                         .ix(ix)
-                        .tab_bar_prefix(has_extend_dock_button)
+                        // We always render a TabBar prefix (scroll buttons), so tabs must account for it.
+                        .tab_bar_prefix(true)
                         .map(|this| {
                             if let Some(tab_name) = panel.tab_name(cx) {
                                 this.child(tab_name)
@@ -1161,6 +1178,32 @@ impl TabPanel {
             this.on_action(cx.listener(Self::on_action_toggle_zoom))
                 .on_action(cx.listener(Self::on_action_close_panel))
         })
+    }
+
+    fn scroll_tab_bar_by(&mut self, delta_x: Pixels, cx: &mut Context<Self>) {
+        let offset = self.tab_bar_scroll_handle.offset();
+        let max_x = self.tab_bar_scroll_handle.max_offset().width;
+
+        let mut new_x = offset.x + delta_x;
+        new_x = new_x.min(px(0.));
+        new_x = new_x.max(px(0.) - max_x);
+
+        self.tab_bar_scroll_handle
+            .set_offset(point(new_x, offset.y));
+        cx.notify();
+    }
+
+    fn on_tab_scroll_left(&mut self, _: &gpui::ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
+        self.scroll_tab_bar_by(px(200.), cx);
+    }
+
+    fn on_tab_scroll_right(
+        &mut self,
+        _: &gpui::ClickEvent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.scroll_tab_bar_by(px(-200.), cx);
     }
 }
 
