@@ -89,7 +89,7 @@ impl RenderOnce for WindowBorder {
                             move |_bounds, hitbox, window, _| {
                                 let mouse = window.mouse_position();
                                 let size = window.window_bounds().get_bounds().size;
-                                let Some(edge) = resize_edge(mouse, SHADOW_SIZE, size) else {
+                                let Some(edge) = resize_edge(mouse, SHADOW_SIZE, size, tiling) else {
                                     return;
                                 };
                                 window.set_cursor_style(
@@ -128,7 +128,7 @@ impl RenderOnce for WindowBorder {
                         let size = window.window_bounds().get_bounds().size;
                         let pos = window.mouse_position();
 
-                        match resize_edge(pos, SHADOW_SIZE, size) {
+                        match resize_edge(pos, SHADOW_SIZE, size, tiling) {
                             Some(edge) => window.start_window_resize(edge),
                             None => {}
                         };
@@ -176,25 +176,71 @@ impl RenderOnce for WindowBorder {
     }
 }
 
-fn resize_edge(pos: Point<Pixels>, shadow_size: Pixels, size: Size<Pixels>) -> Option<ResizeEdge> {
-    let edge = if pos.y < shadow_size && pos.x < shadow_size {
-        ResizeEdge::TopLeft
-    } else if pos.y < shadow_size && pos.x > size.width - shadow_size {
-        ResizeEdge::TopRight
-    } else if pos.y < shadow_size {
-        ResizeEdge::Top
-    } else if pos.y > size.height - shadow_size && pos.x < shadow_size {
-        ResizeEdge::BottomLeft
-    } else if pos.y > size.height - shadow_size && pos.x > size.width - shadow_size {
-        ResizeEdge::BottomRight
-    } else if pos.y > size.height - shadow_size {
-        ResizeEdge::Bottom
-    } else if pos.x < shadow_size {
-        ResizeEdge::Left
-    } else if pos.x > size.width - shadow_size {
-        ResizeEdge::Right
+fn resize_edge(
+    pos: Point<Pixels>,
+    shadow_size: Pixels,
+    size: Size<Pixels>,
+    tiling: gpui::Tiling,
+) -> Option<ResizeEdge> {
+    let near_top = pos.y < shadow_size && !tiling.top;
+    let near_bottom = pos.y > size.height - shadow_size && !tiling.bottom;
+    let near_left = pos.x < shadow_size && !tiling.left;
+    let near_right = pos.x > size.width - shadow_size && !tiling.right;
+
+    if near_top && near_left {
+        Some(ResizeEdge::TopLeft)
+    } else if near_top && near_right {
+        Some(ResizeEdge::TopRight)
+    } else if near_top {
+        Some(ResizeEdge::Top)
+    } else if near_bottom && near_left {
+        Some(ResizeEdge::BottomLeft)
+    } else if near_bottom && near_right {
+        Some(ResizeEdge::BottomRight)
+    } else if near_bottom {
+        Some(ResizeEdge::Bottom)
+    } else if near_left {
+        Some(ResizeEdge::Left)
+    } else if near_right {
+        Some(ResizeEdge::Right)
     } else {
-        return None;
-    };
-    Some(edge)
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::size;
+
+    #[test]
+    fn resize_edge_is_disabled_when_fully_tiled() {
+        let size = size(px(800.0), px(600.0));
+        let pos = point(px(799.0), px(599.0));
+        assert_eq!(resize_edge(pos, px(12.0), size, gpui::Tiling::tiled()), None);
+    }
+
+    #[test]
+    fn resize_edge_ignores_tiled_right_edge() {
+        let size = size(px(800.0), px(600.0));
+        let pos = point(px(799.0), px(599.0));
+        let tiling = gpui::Tiling {
+            right: true,
+            ..Default::default()
+        };
+
+        assert_eq!(resize_edge(pos, px(12.0), size, tiling), Some(ResizeEdge::Bottom));
+    }
+
+    #[test]
+    fn resize_edge_ignores_tiled_bottom_edge() {
+        let size = size(px(800.0), px(600.0));
+        let pos = point(px(799.0), px(599.0));
+        let tiling = gpui::Tiling {
+            bottom: true,
+            ..Default::default()
+        };
+
+        assert_eq!(resize_edge(pos, px(12.0), size, tiling), Some(ResizeEdge::Right));
+    }
 }
